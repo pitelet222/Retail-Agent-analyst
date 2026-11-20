@@ -381,6 +381,34 @@ The oldest v1 run is left out: it was saved before the result rows were, so it c
 re-graded. Five runs of v5 with no question ever missed is the strongest result here, and it
 is still a result on questions the prompt was tuned on.
 
+## Held-out set (Haiku 5.5, v5)
+
+26 questions written after v5 was final and committed (597bbd8) before the agent saw them.
+They name products the way a shopper does ("the 1 kg Nutella", "the 360 g Bonne Maman
+spread") instead of by barcode, write a chain without its accent ("Intermarche"), ask about
+"last month", and add five new refusals (calories, Tesco, wages, queues, 1999).
+
+One run on 2026-11-20:
+
+| | Held-out set |
+|---|---|
+| Accuracy | 100 % (26), 95 % interval 87 to 100 % |
+| Correct refusals | 5 of 5 |
+| Answers in the wrong language | 0 |
+| SQL valid at first try | 100 % (2 queries repaired) |
+| Cost of the run | 0.027 EUR |
+| Latency, median / p90 / max | 4.8 / 6.9 / 7.4 s |
+
+Every answer was read by hand, not only the verdicts, and all 26 hold. The agent found each
+product from its name and size, resolved "last month" to October 2026 from the date it is
+given, matched "Intermarche" to the chain, and named the method when it chose one (mean,
+promotions included). The figures it gave outside its attached query were checked against
+the database (for H26, Nutella prices from 2019-05-02, 757 of them): right.
+
+So the score on the core set does not come from tuning on it, as far as 26 questions can
+tell. The interval is the honest reading: one run of 26 rules out an accuracy much below
+87 %, not one of 95 %.
+
 ## Against the targets
 
 | Target | Result (Haiku 5.5, prompt v4) |
@@ -391,10 +419,10 @@ is still a result on questions the prompt was tuned on.
 
 ## What this evaluation does not tell
 
-- **Accuracy on questions nobody tuned for.** Every failure fixed between v1 and v5 was found
-  on the core and natural sets, so their scores are partly scores on the training data. The
-  held-out set (`evals/questions_heldout.yaml`, 26 questions) was written after v5 and is
-  there to measure that gap.
+- **Accuracy on questions nobody tuned for, beyond 26.** Every failure fixed between v1 and
+  v5 was found on the core and natural sets. The held-out set measures the gap, but with
+  one run of 26 questions it can only rule out a large one. Once a failure on it leads to a
+  prompt change, it stops being held out, and a new set is needed.
 
 - **Accuracy in real use.** The core questions say average or median and name the category.
   The natural set is closer to a user, but small, and its questions were kept only if they

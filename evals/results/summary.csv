@@ -22,3 +22,4 @@ run_id,date,question_set,model,prompt_version,questions,manual_review,accuracy_p
 20261118-192740_core_claude-haiku-5-5_v5,2026-11-18,core,anthropic:claude-haiku-5-5,v5,50,0,100.0,100.0,10,10,0,0,100.0,0,0,0,334950,27516,0.0426,0.00085,3.2,5.0,6.7,pydantic-ai
 20261118-193035_core_claude-haiku-5-5_v5_langgraph,2026-11-18,core,anthropic:claude-haiku-5-5,v5,50,0,100.0,100.0,10,10,0,0,93.2,3,3,0,343275,26533,0.0429,0.00086,3.1,4.5,6.9,langgraph
 20261118-193325_core_claude-haiku-5-5_v5,2026-11-18,core,anthropic:claude-haiku-5-5,v5,50,0,100.0,100.0,10,10,0,0,97.7,1,2,0,336558,26552,0.0424,0.00085,3.2,4.4,6.1,pydantic-ai
+20261120-140314_heldout_claude-haiku-5-5_v5,2026-11-20,heldout,anthropic:claude-haiku-5-5,v5,26,0,100.0,100.0,5,5,0,0,100.0,0,2,0,214665,17365,0.0272,0.00105,4.8,6.9,7.4,pydantic-ai

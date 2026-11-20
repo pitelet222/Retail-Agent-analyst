@@ -28,7 +28,8 @@ What is in it:
   answers backed by a query it ran.
 - An evaluation of 50 questions with computed answers: 100 % right and 10 of 10 correct
   refusals with the current prompt, at about 0.04 EUR for the 50
-  ([evaluation report](evals/REPORT.md)).
+  ([evaluation report](evals/REPORT.md)). On 26 held-out questions written after the last
+  prompt change, committed before the agent saw them: 26 of 26.
 - A public demo, an MCP server with the same tools, the same agent written in LangGraph to
   compare, and tests on every push.
 
@@ -225,6 +226,12 @@ How sure these numbers are: with 50 questions, a 95 % interval around 50 right r
 93 % to 100 %. Five runs of v5 answered all 50 right every time. Every saved run has been
 graded again with today's grader (`uv run python -m evals.stats`), which changed two old
 verdicts, one each way; the table above uses today's grader.
+
+Those 50 questions are also the ones the prompt was tuned on. The held-out set
+(`evals/questions_heldout.yaml`) has 26 questions written after the last prompt change and
+committed before the agent saw them: products named like a shopper would ("the 1 kg
+Nutella"), "last month", a chain without its accent, five new refusals. One run: 26 of 26,
+every answer read by hand, 0.027 EUR. With 26 questions that means "at least about 87 %".
 
 What to keep in mind when reading these numbers:
 

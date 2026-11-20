@@ -12,7 +12,8 @@ All notable changes to this project. The format follows
   rows without the download).
 - A contributing guide, issue and pull request templates, and release-note categories.
 - A held-out set of 26 questions written after the last prompt change: products named the
-  way a shopper names them, a relative date and new refusals.
+  way a shopper names them, a relative date and new refusals. First run with prompt v5:
+  26 of 26, 5 of 5 refusals, 0.027 EUR.
 - `evals.stats`: re-grades the saved runs and reports 95 % intervals and pass^k.
 
 ### Fixed
