@@ -15,6 +15,9 @@ All notable changes to this project. The format follows
   way a shopper names them, a relative date and new refusals. First run with prompt v5:
   26 of 26, 5 of 5 refusals, 0.027 EUR.
 - `evals.stats`: re-grades the saved runs and reports 95 % intervals and pass^k.
+- Demo: the example buttons show recorded answers at once, labelled with their date, and no
+  longer use up the visitor's questions. The page shows the date of the latest price, and
+  the model client loads in the background instead of holding the page back.
 
 ### Fixed
 

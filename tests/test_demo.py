@@ -15,9 +15,11 @@ from streamlit.testing.v1 import AppTest
 from agent import agent as agent_module
 from agent.agent import AgentAnswer, AgentRun, SqlAttempt
 from agent.models import SqlResult
-from app import ask_page
+from app import ask_page, recorded
+from app.charts import build_chart, time_column, to_frame
 from app.evaluation_page import cost_by_version, latest_run, load_run, load_summary
 from app.limits import MAX_QUESTION_CHARS, QUESTIONS_PER_SESSION, DailyBudget, problem_with
+from evals.questions import load_questions
 
 APP = str(Path(__file__).parent.parent / "app" / "streamlit_app.py")
 SQL = "SELECT chain, avg(price) AS avg_price FROM prices GROUP BY chain LIMIT 5"
@@ -67,6 +69,7 @@ def asked(monkeypatch) -> list[str]:
     # The budget and the start-up are cached for the whole process: start each test clean.
     ask_page.daily_budget.clear()
     ask_page.start_up.clear()
+    ask_page.recorded_examples.clear()
     return questions
 
 
@@ -92,13 +95,99 @@ def test_a_question_shows_the_answer_the_chart_the_rows_and_the_sql(asked):
     assert "4.2 s" in footer and "2 model calls" in footer and "EUR" in footer
 
 
-def test_an_example_button_asks_its_question(asked):
-    app = AppTest.from_file(APP).run()
-    example = next(b for b in app.button if b.label == ask_page.EXAMPLES[0])
-    example.click()
-    app.run()
+def _click_example(app: AppTest, question: str) -> AppTest:
+    next(b for b in app.button if b.label == question).click()
+    return app.run()
+
+
+def test_an_example_shows_its_recorded_answer_at_once_and_costs_the_visit_nothing(asked):
+    app = _click_example(AppTest.from_file(APP).run(), ask_page.EXAMPLES[0])
+
+    assert asked == []  # the agent was not called, so no question of the visit was spent
+    saved = recorded.load()[ask_page.EXAMPLES[0]]
+    assert app.text[1].value == saved.run.answer.answer
+    assert any("Recorded answer" in caption.value for caption in app.caption)
+    assert len(app.get("plotly_chart")) == 1
+    assert app.code[0].value == saved.run.answer.sql
+
+
+def test_recorded_examples_leave_every_question_of_the_visit(asked):
+    # Every answer on the page is drawn again at each step: a longer timeout than 3 s.
+    app = AppTest.from_file(APP, default_timeout=15).run()
+    for example in ask_page.EXAMPLES:
+        app = _click_example(app, example)
+    for number in range(QUESTIONS_PER_SESSION):
+        app = ask(app, f"Question {number}?")
+
+    assert len(asked) == QUESTIONS_PER_SESSION
+    # The only warning is the recorded refusal of the Nutella example, not the limit.
+    assert not any("per session" in warning.value for warning in app.warning)
+
+
+def test_an_example_with_no_recording_is_asked_live(asked, monkeypatch):
+    monkeypatch.setattr(ask_page, "load_recorded", lambda: {})
+    ask_page.recorded_examples.clear()
+    app = _click_example(AppTest.from_file(APP).run(), ask_page.EXAMPLES[0])
 
     assert asked == [ask_page.EXAMPLES[0]]
+    assert not any("Recorded answer" in caption.value for caption in app.caption)
+
+
+def test_a_start_up_failure_leaves_the_page_and_examples_working(asked, monkeypatch):
+    def broken() -> None:
+        raise RuntimeError("ANTHROPIC_API_KEY is not set")
+
+    monkeypatch.setattr(agent_module, "warm_up", broken)
+    app = _click_example(AppTest.from_file(APP).run(), ask_page.EXAMPLES[0])
+    assert any("Recorded answer" in caption.value for caption in app.caption)
+
+    app = ask(app, "Which chain is cheapest?")
+    assert asked == []
+    assert "not available" in app.error[0].value
+    assert "ANTHROPIC" not in str([e.value for e in app.error])
+
+
+def test_every_example_has_a_recorded_run_that_finished():
+    runs = recorded.load()
+    assert set(runs) == set(ask_page.EXAMPLES)
+    for question, item in runs.items():
+        assert item.run.error is None, question
+        if item.run.answer.answerable:
+            assert item.run.answer.sql and item.run.data and item.run.data.rows, question
+    # The Nutella example is there to show a refusal.
+    assert not runs[ask_page.EXAMPLES[-1]].run.answer.answerable
+
+
+def test_recording_keeps_numbers_and_dates_readable_by_the_charts(tmp_path):
+    rows = SqlResult(
+        columns=["month", "n", "avg"],
+        rows=[[date(2026, 1, 1), Decimal("12"), Decimal("2.50")]],
+        row_count=1,
+    )
+    run = fake_run("When?").model_copy(update={"data": rows})
+    path = tmp_path / "recorded.json"
+    recorded.save([run], date(2026, 11, 20), path)
+    back = recorded.load(path)["When?"]
+    assert back.recorded_on == date(2026, 11, 20)
+    assert back.run.data.rows == [[date(2026, 1, 1), 12, 2.5]]
+    frame = to_frame(back.run.data)
+    assert time_column(frame) == "month"
+    assert recorded.load(tmp_path / "missing.json") == {}
+
+
+def test_a_recorded_chart_is_the_chart_the_live_answer_drew():
+    # Found in the browser: with dates kept as texts, the year-by-year example labelled
+    # its bars "2022-12-31" (a text column is a label), where the live answer shows 2022.
+    item = recorded.load()[ask_page.EXAMPLES[1]]
+    figure = build_chart(item.run.answer.chart, item.run.data)
+    assert [str(x) for x in figure.data[0].x][:2] == ["2022", "2023"]
+
+
+def test_the_date_on_the_page_is_the_latest_price_the_evaluation_checks():
+    l04 = next(q for q in load_questions() if q.id == "L04")
+    assert ask_page.DATA_UNTIL.isoformat() == l04.expected
+    app = AppTest.from_file(APP).run()
+    assert any(metric.value == "12 Nov 2026" for metric in app.metric)
 
 
 def test_a_refusal_is_shown_as_a_warning_with_no_chart_and_no_sql(asked):

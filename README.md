@@ -271,6 +271,11 @@ uv run python -m streamlit run app/streamlit_app.py
 - **Ask.** Type a question or pick an example. The page shows the answer, a chart, the rows,
   the SQL that produced them, and what the answer took: seconds, model calls, queries,
   tokens and cost. A question the data cannot answer is shown as such, with the reason.
+  The four example buttons show answers the agent gave once and that were recorded
+  (`app/recorded_examples.json`), so they appear at once and do not use up a visitor's
+  questions; each is labelled with the day it was recorded. Typed questions are always
+  answered live. After a change to the prompt or the data, record them again with
+  `uv run python -m app.record_examples` (about 0.005 EUR).
 - **Evaluation.** The figures of every recorded run and, for any run, each question with
   its verdict, answer and SQL. It reads `evals/results/`, so it cannot disagree with the
   measurements.

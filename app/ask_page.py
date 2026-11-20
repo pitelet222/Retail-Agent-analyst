@@ -1,5 +1,6 @@
 """The main page: ask a question, see the answer, the SQL behind it, the rows and a chart."""
 
+import threading
 from datetime import date
 
 import streamlit as st
@@ -14,6 +15,8 @@ from app.limits import (
     DailyBudget,
     problem_with,
 )
+from app.recorded import RecordedRun
+from app.recorded import load as load_recorded
 from evals.run import cost_eur
 
 EXAMPLES = [
@@ -26,13 +29,45 @@ CONFIDENCE = {"high": "High confidence", "medium": "Medium confidence", "low": "
 # The colour of the badge that carries the confidence the model declared.
 CONFIDENCE_COLOR = {"high": "green", "medium": "orange", "low": "gray"}
 DAILY_LIMIT = QUESTIONS_PER_DAY
+# The most recent price in the database (question L04 of the evaluation checks it).
+DATA_UNTIL = date(2026, 11, 12)
+# What the page shows: a run, and the day it was recorded if it is a recorded example.
+Shown = tuple[AgentRun, date | None]
 
 
-@st.cache_resource(show_spinner="Starting up: loading the model client (once per server)...")
-def start_up() -> bool:
-    """Load the model client and the schema once, so no visitor's question waits for it."""
-    agent_module.warm_up()
-    return True
+class StartUp:
+    """Loads the model client and the schema in the background, once per server.
+
+    It takes 10 to 17 s. Started when the page is first drawn, it no longer holds the page
+    back: the recorded examples show at once, and a typed question waits only for what is
+    left of it.
+    """
+
+    def __init__(self) -> None:
+        self.error: Exception | None = None
+        self.thread = threading.Thread(target=self._run, daemon=True)
+        self.thread.start()
+
+    def _run(self) -> None:
+        try:
+            agent_module.warm_up()
+        except Exception as error:  # noqa: BLE001 - reported to the visitor by wait()
+            self.error = error
+
+    def wait(self) -> None:
+        self.thread.join()
+        if self.error is not None:
+            raise self.error
+
+
+@st.cache_resource
+def start_up() -> StartUp:
+    return StartUp()
+
+
+@st.cache_resource
+def recorded_examples() -> dict[str, RecordedRun]:
+    return load_recorded()
 
 
 @st.cache_resource
@@ -43,7 +78,7 @@ def daily_budget() -> DailyBudget:
 
 def _ask(question: str) -> None:
     """Check the limits, run the agent and keep the result in the session."""
-    history: list[AgentRun] = st.session_state.setdefault("runs", [])
+    history: list[Shown] = st.session_state.setdefault("runs", [])
     problem = problem_with(question)
     if problem:
         st.warning(problem)
@@ -60,6 +95,15 @@ def _ask(question: str) -> None:
     if not budget.take(today):
         st.warning("The demo has reached its limit of questions for today. Come back tomorrow.")
         return
+    try:
+        with st.spinner("Starting up: loading the model client (once per server)..."):
+            start_up().wait()
+    except Exception as error:  # noqa: BLE001 - missing key or database: a setup problem
+        start_up.clear()  # try again on the next question
+        budget.give_back(today)
+        print(f"start-up failed: {type(error).__name__}: {error}")
+        st.error("The demo is not available right now: its database or model is not reachable.")
+        return
     st.session_state["asked"] = st.session_state.get("asked", 0) + 1
     try:
         with st.spinner("Writing and running the query..."):
@@ -67,7 +111,7 @@ def _ask(question: str) -> None:
             # Stored before the spinner closes: if the visitor clicked something meanwhile,
             # Streamlit stops this script at its next call, and an answer already paid for
             # would be lost.
-            history.insert(0, run)
+            history.insert(0, (run, None))
     except Exception as error:  # noqa: BLE001 - a visitor gets a sentence, not a traceback
         # The model API is down, the key is missing... Nothing the visitor can fix, and
         # nothing was answered, so today's budget gets the question back.
@@ -76,12 +120,27 @@ def _ask(question: str) -> None:
         st.error("The agent could not be reached. Try again in a moment.")
 
 
-def _show(run: AgentRun, key: str) -> None:
+def _show_example(question: str) -> None:
+    """A recorded example appears at once and costs the visit nothing; else it is asked."""
+    recorded = recorded_examples().get(question)
+    if recorded is None:
+        _ask(question)
+        return
+    history: list[Shown] = st.session_state.setdefault("runs", [])
+    history.insert(0, (recorded.run, recorded.recorded_on))
+
+
+def _show(run: AgentRun, key: str, recorded_on: date | None = None) -> None:
     # The question comes from a visitor and the answer from a model that has read it.
     # st.text shows both exactly as written; every other element would read them as
     # Markdown and turn a pasted address into a link or an image.
     st.caption("Question")
     st.text(run.question)
+    if recorded_on is not None:
+        st.caption(
+            f"Recorded answer: the agent gave it on {recorded_on:%d %B %Y}, so it shows at "
+            "once and does not count towards your questions. Type the question to ask it live."
+        )
     if run.error:
         st.badge("Not finished", color="red")
         st.error("The agent could not finish this question.")
@@ -150,16 +209,12 @@ def render() -> None:
         "runs it on a read-only PostgreSQL database and answers from the rows, and only "
         "from them. It answers in English, Spanish or French."
     )
-    prices, stores, chains = st.columns(3)
+    prices, stores, chains, until = st.columns(4)
     prices.metric("Prices observed", "185,337", border=True)
     stores.metric("Stores", "2,285", border=True)
     chains.metric("Chains", "113", border=True)
-    try:
-        start_up()
-    except Exception as error:  # noqa: BLE001 - missing key or database: a setup problem
-        print(f"start-up failed: {type(error).__name__}: {error}")
-        st.error("The demo is not available right now: its database or model is not reachable.")
-        return
+    until.metric("Latest price", f"{DATA_UNTIL:%d %b %Y}", border=True)
+    start_up()  # in the background: nothing on this page waits for it
 
     with st.form("ask", clear_on_submit=True):
         typed = st.text_input(
@@ -178,16 +233,16 @@ def render() -> None:
     if submitted:
         _ask(typed)
     elif chosen:
-        _ask(chosen)
+        _show_example(chosen)
 
-    runs: list[AgentRun] = st.session_state.get("runs", [])
-    for position, run in enumerate(runs):
+    runs: list[Shown] = st.session_state.get("runs", [])
+    for position, (run, recorded_on) in enumerate(runs):
         with st.container(border=True):
-            _show(run, key=str(len(runs) - position))
+            _show(run, key=str(len(runs) - position), recorded_on=recorded_on)
 
     st.divider()
     st.caption(
-        "185,337 prices observed in 2,285 French stores, from "
+        f"185,337 prices observed in 2,285 French stores up to {DATA_UNTIL:%d %B %Y}, from "
         "[Open Prices](https://prices.openfoodfacts.org) by Open Food Facts, under the "
         "[ODbL](https://opendatacommons.org/licenses/odbl/1-0/). The prices are "
         "crowdsourced and coverage is uneven: read small samples with care. "

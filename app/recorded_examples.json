@@ -1,0 +1,238 @@
+[
+  {
+    "recorded_on": "2026-11-20",
+    "run": {
+      "question": "Which chain has the cheapest whole milk per litre?",
+      "answer": {
+        "answerable": true,
+        "answer": "E.Leclerc has the cheapest whole milk per litre, with a median of 1.41 EUR/l across 40 price observations (I used the median because the mean is pulled up by outliers). Auchan is next at 1.55 EUR/l (39 observations). Note that by mean, Auchan (1.83) is cheaper than E.Leclerc (2.00), so the ranking depends on the measure.",
+        "sql": "SELECT chain, count(*) AS n, round(percentile_cont(0.5) WITHIN GROUP (ORDER BY price_per_unit)::numeric, 2) AS median_eur_per_l, round(avg(price_per_unit)::numeric, 2) AS mean_eur_per_l FROM v_price_per_unit WHERE 'en:whole-milks' = ANY(categories) AND per_unit = 'l' AND chain IS NOT NULL GROUP BY chain HAVING count(*) >= 5 ORDER BY median_eur_per_l ASC LIMIT 50",
+        "chart": "bar",
+        "confidence": "medium"
+      },
+      "data": {
+        "columns": [
+          "chain",
+          "n",
+          "median_eur_per_l",
+          "mean_eur_per_l"
+        ],
+        "rows": [
+          [
+            "E.Leclerc",
+            40,
+            1.41,
+            2
+          ],
+          [
+            "Auchan",
+            39,
+            1.55,
+            1.83
+          ],
+          [
+            "Intermarché",
+            56,
+            1.9,
+            1.96
+          ],
+          [
+            "Carrefour",
+            67,
+            2.02,
+            3.69
+          ],
+          [
+            "Monoprix",
+            18,
+            2.02,
+            2.07
+          ],
+          [
+            "U",
+            44,
+            2.07,
+            2.21
+          ],
+          [
+            "Franprix",
+            10,
+            2.13,
+            2.15
+          ],
+          [
+            "Biocoop",
+            8,
+            3.25,
+            3.49
+          ]
+        ],
+        "row_count": 8
+      },
+      "attempts": [
+        {
+          "sql": "SELECT chain, count(*) AS n, round(percentile_cont(0.5) WITHIN GROUP (ORDER BY price_per_unit)::numeric, 2) AS median_eur_per_l, round(avg(price_per_unit)::numeric, 2) AS mean_eur_per_l FROM v_price_per_unit WHERE 'en:whole-milks' = ANY(categories) AND per_unit = 'l' AND chain IS NOT NULL GROUP BY chain HAVING count(*) >= 5 ORDER BY median_eur_per_l ASC LIMIT 50",
+          "ok": true,
+          "error": null,
+          "row_count": 8,
+          "repaired": true
+        }
+      ],
+      "error": null,
+      "model": "anthropic:claude-haiku-5-5",
+      "prompt_version": "v5",
+      "input_tokens": 5664,
+      "output_tokens": 835,
+      "requests": 2,
+      "seconds": 5.98
+    }
+  },
+  {
+    "recorded_on": "2026-11-20",
+    "run": {
+      "question": "How has the number of prices recorded changed year by year since 2022?",
+      "answer": {
+        "answerable": true,
+        "answer": "The number of prices recorded has risen every year since 2022: 4,511 in 2022, 6,490 in 2023, 27,641 in 2024, 44,736 in 2025, and 95,470 so far in 2026 (data runs to 2026-11-12, so 2026 is not a full year). Coverage is uneven, so the growth mainly reflects more observations being collected.",
+        "sql": "SELECT extract(year from date)::int AS year, count(*) AS prices_recorded, max(date) AS latest_date_in_year FROM prices WHERE date >= '2022-01-01' GROUP BY 1 ORDER BY 1 LIMIT 200",
+        "chart": "bar",
+        "confidence": "high"
+      },
+      "data": {
+        "columns": [
+          "year",
+          "prices_recorded",
+          "latest_date_in_year"
+        ],
+        "rows": [
+          [
+            2022,
+            4511,
+            "2022-12-31"
+          ],
+          [
+            2023,
+            6490,
+            "2023-12-31"
+          ],
+          [
+            2024,
+            27641,
+            "2024-12-31"
+          ],
+          [
+            2025,
+            44736,
+            "2025-12-31"
+          ],
+          [
+            2026,
+            95470,
+            "2026-11-12"
+          ]
+        ],
+        "row_count": 5
+      },
+      "attempts": [
+        {
+          "sql": "SELECT extract(year from date)::int AS year, count(*) AS prices_recorded, max(date) AS latest_date_in_year FROM prices WHERE date >= '2022-01-01' GROUP BY 1 ORDER BY 1 LIMIT 200",
+          "ok": true,
+          "error": null,
+          "row_count": 5,
+          "repaired": false
+        }
+      ],
+      "error": null,
+      "model": "anthropic:claude-haiku-5-5",
+      "prompt_version": "v5",
+      "input_tokens": 9051,
+      "output_tokens": 780,
+      "requests": 3,
+      "seconds": 6.01
+    }
+  },
+  {
+    "recorded_on": "2026-11-20",
+    "run": {
+      "question": "¿Cuál es el precio medio por kilo de la mantequilla en Carrefour y en E.Leclerc?",
+      "answer": {
+        "answerable": true,
+        "answer": "Según los precios observados por kilo de productos con la etiqueta 'en:butters' (incluye subcategorías como mantequilla con sal o sin sal), la media en Carrefour es de 12,27 €/kg (mediana 11,94 €/kg, 218 observaciones de 87 productos) y en E.Leclerc de 10,18 €/kg (mediana 9,88 €/kg, 693 observaciones de 147 productos). Por tanto, E.Leclerc sale unos 2 €/kg más barato de media.",
+        "sql": "SELECT l.chain, count(*) AS n_obs, count(DISTINCT v.product_code) AS n_products, round(avg(v.price_per_unit)::numeric,2) AS mean_eur_per_kg, round((percentile_cont(0.5) WITHIN GROUP (ORDER BY v.price_per_unit))::numeric,2) AS median_eur_per_kg FROM v_price_per_unit v JOIN prices p ON p.id = v.price_id JOIN locations l ON l.id = p.location_id WHERE 'en:butters' = ANY(v.categories) AND v.per_unit = 'kg' AND l.chain IN ('Carrefour','E.Leclerc') GROUP BY l.chain ORDER BY l.chain LIMIT 10",
+        "chart": "bar",
+        "confidence": "medium"
+      },
+      "data": {
+        "columns": [
+          "chain",
+          "n_obs",
+          "n_products",
+          "mean_eur_per_kg",
+          "median_eur_per_kg"
+        ],
+        "rows": [
+          [
+            "Carrefour",
+            218,
+            87,
+            12.27,
+            11.94
+          ],
+          [
+            "E.Leclerc",
+            693,
+            147,
+            10.18,
+            9.88
+          ]
+        ],
+        "row_count": 2
+      },
+      "attempts": [
+        {
+          "sql": "SELECT category, count(*) AS n FROM products WHERE 'en:butters' = ANY(categories) OR category ILIKE '%butter%' GROUP BY category ORDER BY n DESC LIMIT 50",
+          "ok": true,
+          "error": null,
+          "row_count": 50,
+          "repaired": false
+        },
+        {
+          "sql": "SELECT l.chain, count(*) AS n_obs, count(DISTINCT v.product_code) AS n_products, round(avg(v.price_per_unit)::numeric,2) AS mean_eur_per_kg, round((percentile_cont(0.5) WITHIN GROUP (ORDER BY v.price_per_unit))::numeric,2) AS median_eur_per_kg FROM v_price_per_unit v JOIN prices p ON p.id = v.price_id JOIN locations l ON l.id = p.location_id WHERE 'en:butters' = ANY(v.categories) AND v.per_unit = 'kg' AND l.chain IN ('Carrefour','E.Leclerc') GROUP BY l.chain ORDER BY l.chain LIMIT 10",
+          "ok": true,
+          "error": null,
+          "row_count": 2,
+          "repaired": false
+        }
+      ],
+      "error": null,
+      "model": "anthropic:claude-haiku-5-5",
+      "prompt_version": "v5",
+      "input_tokens": 10153,
+      "output_tokens": 1235,
+      "requests": 3,
+      "seconds": 7.38
+    }
+  },
+  {
+    "recorded_on": "2026-11-20",
+    "run": {
+      "question": "How many jars of Nutella did Carrefour sell in 2025?",
+      "answer": {
+        "answerable": false,
+        "answer": "The database cannot answer this. It holds observed shelf prices from crowdsourced observations, not sales volumes, so it has no count of Nutella jars sold by Carrefour in 2025.",
+        "sql": null,
+        "chart": "none",
+        "confidence": "high"
+      },
+      "data": null,
+      "attempts": [],
+      "error": null,
+      "model": "anthropic:claude-haiku-5-5",
+      "prompt_version": "v5",
+      "input_tokens": 2564,
+      "output_tokens": 267,
+      "requests": 1,
+      "seconds": 2.11
+    }
+  }
+]
