@@ -7,6 +7,7 @@ import streamlit as st
 
 from agent import agent as agent_module
 from agent.agent import AgentRun
+from agent.sql_guard import MAX_ROWS
 from app.charts import MAX_BARS, build_chart, time_column, to_frame, value_columns
 from app.limits import (
     MAX_QUESTION_CHARS,
@@ -179,8 +180,11 @@ def _show(run: AgentRun, key: str, recorded_on: date | None = None) -> None:
             rows_place = st.container()
         with rows_place:
             st.dataframe(frame, hide_index=True)
-            if run.data.row_count == 200:
-                st.caption("Showing the first 200 rows: the agent's queries are limited to 200.")
+            if run.data.row_count == MAX_ROWS:
+                st.caption(
+                    f"Showing the first {MAX_ROWS} rows: "
+                    f"the agent's queries are limited to {MAX_ROWS}."
+                )
 
     if run.answer.sql:
         with st.expander("SQL that produced this answer"):

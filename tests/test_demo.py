@@ -295,6 +295,34 @@ def test_no_value_selector_when_there_is_no_chart_to_change(asked, monkeypatch):
     assert len(app.dataframe) == 1
 
 
+def test_the_row_limit_caption_uses_the_query_limit(asked, monkeypatch):
+    test_limit = 3
+    monkeypatch.setattr(ask_page, "MAX_ROWS", test_limit, raising=False)
+    limited_rows = SqlResult(
+        columns=["row"], rows=[[number] for number in range(test_limit)], row_count=test_limit
+    )
+    below_limit_rows = SqlResult(columns=["row"], rows=[[1]], row_count=1)
+
+    def limited(question: str) -> AgentRun:
+        return fake_run(question, chart="none").model_copy(update={"data": limited_rows})
+
+    monkeypatch.setattr(agent_module, "ask", limited)
+    app = ask(AppTest.from_file(APP).run(timeout=10), "Show the maximum rows?")
+
+    captions = " ".join(caption.value for caption in app.caption)
+    assert f"Showing the first {test_limit} rows" in captions
+    assert f"queries are limited to {test_limit}" in captions
+
+    def below_limit(question: str) -> AgentRun:
+        return fake_run(question, chart="none").model_copy(update={"data": below_limit_rows})
+
+    monkeypatch.setattr(agent_module, "ask", below_limit)
+    app = ask(AppTest.from_file(APP).run(timeout=10), "Show fewer rows?")
+
+    captions = " ".join(caption.value for caption in app.caption)
+    assert "queries are limited to" not in captions
+
+
 def test_a_failure_of_the_model_api_is_a_sentence_not_a_traceback(asked, monkeypatch):
     def broken(question: str) -> AgentRun:
         raise ConnectionError("api down, key sk-secret")
