@@ -55,6 +55,8 @@ def main() -> None:
     parser.add_argument("--model", help="provider:model, overrides LLM_MODEL from .env")
     parser.add_argument("--prompt", choices=sorted(PROMPTS), default=PROMPT_VERSION)
     args = parser.parse_args()
+    if not args.question.strip():
+        parser.error("the question is empty")
 
     # Windows terminals default to a legacy encoding; product names have accents.
     sys.stdout.reconfigure(encoding="utf-8")
