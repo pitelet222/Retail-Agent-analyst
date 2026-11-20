@@ -3,8 +3,10 @@
 Pure functions: no model, no database. The rules, by answer_type:
 
   number   the expected figure (within 1 %; exact if it is a year) is in the agent's answer
-           text, or in the first row of the result of its query
-  text     the expected value is in the answer text, or in the first row of the result
+           text. The right figure in the result of the query is not enough: the text is
+           what the user reads
+  text     the expected value is in the answer text; a date may be written in words
+           ("6 February 2021", "12 de noviembre de 2026")
   rows     every expected row is found in the result of the agent's query; if the question
            is ordered, in the same order; if a single row is expected ("which chain is the
            cheapest?"), it must be the first row of the agent's result. Failing that, an
@@ -121,17 +123,82 @@ def row_matches(expected_row: list, row: list) -> bool:
     return all(any(cell_matches(value, cell) for cell in row) for value in expected_row)
 
 
+_MONTHS = {
+    name: number
+    for number, names in enumerate(
+        [
+            ("january", "janvier", "enero"),
+            ("february", "février", "fevrier", "febrero"),
+            ("march", "mars", "marzo"),
+            ("april", "avril", "abril"),
+            ("may", "mai", "mayo"),
+            ("june", "juin", "junio"),
+            ("july", "juillet", "julio"),
+            ("august", "août", "aout", "agosto"),
+            ("september", "septembre", "septiembre", "setiembre"),
+            ("october", "octobre", "octubre"),
+            ("november", "novembre", "noviembre"),
+            ("december", "décembre", "decembre", "diciembre"),
+        ],
+        start=1,
+    )
+    for name in names
+}
+_MONTH = "(" + "|".join(sorted(_MONTHS, key=len, reverse=True)) + ")"
+# "6 February 2021", "1er janvier 2025", "12 de noviembre de 2026", "February 6, 2021",
+# "2021-02-06" and "06/02/2021" (day first, as in French and Spanish).
+_DAY_MONTH_YEAR = re.compile(
+    rf"\b(\d{{1,2}})(?:er|st|nd|rd|th)?\s+(?:de\s+)?{_MONTH}\s+(?:de\s+)?(\d{{4}})"
+)
+_MONTH_DAY_YEAR = re.compile(rf"\b{_MONTH}\s+(\d{{1,2}})(?:st|nd|rd|th)?,?\s+(\d{{4}})")
+_ISO_DATE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
+_SLASH_DATE = re.compile(r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b")
+
+
+def _date_or_none(year: str, month: int | str, day: str) -> date | None:
+    try:
+        return date(int(year), int(month), int(day))
+    except ValueError:
+        return None
+
+
+def dates_in_text(text: str) -> set[date]:
+    """Every calendar date written in a sentence, in figures or in words (en, es, fr)."""
+    folded = text.casefold()
+    found = [
+        *(_date_or_none(y, _MONTHS[m], d) for d, m, y in _DAY_MONTH_YEAR.findall(folded)),
+        *(_date_or_none(y, _MONTHS[m], d) for m, d, y in _MONTH_DAY_YEAR.findall(folded)),
+        *(_date_or_none(y, m, d) for y, m, d in _ISO_DATE.findall(folded)),
+        *(_date_or_none(y, m, d) for d, m, y in _SLASH_DATE.findall(folded)),
+    ]
+    return {day for day in found if day is not None}
+
+
+def states_value(expected: Any, text: str) -> bool:
+    """The answer text gives the expected figure, date or name."""
+    if isinstance(expected, int | float) and not isinstance(expected, bool):
+        return any(number_matches(abs(expected), n) for n in numbers_in_text(text))
+    if isinstance(expected, str) and _ISO_DATE.fullmatch(expected):
+        return date.fromisoformat(expected) in dates_in_text(text)
+    return str(expected).casefold() in text.casefold()
+
+
 def _grade_scalar(question: Question, run: AgentRun) -> Grade:
+    """The text is what the user reads, so it must give the answer.
+
+    The result of the query alone is not enough: an answer whose first row holds 2024 and
+    whose text says 2026 is wrong.
+    """
     expected = question.expected
     rows = run.data.rows if run.data else []
+    if states_value(expected, run.answer.answer):
+        return Grade(correct=True, reason="expected value is in the answer text")
     # First row only: the query has to put the answer on top, not somewhere in 200 rows.
     if rows and row_matches([expected], rows[0]):
-        return Grade(correct=True, reason="expected value is in the first row of the result")
-    if question.answer_type == "number":
-        if any(number_matches(abs(expected), n) for n in numbers_in_text(run.answer.answer)):
-            return Grade(correct=True, reason="expected value is in the answer text")
-    elif str(expected).casefold() in run.answer.answer.casefold():
-        return Grade(correct=True, reason="expected value is in the answer text")
+        return Grade(
+            correct=False,
+            reason=f"the result has {expected!r} but the answer text does not state it",
+        )
     return Grade(correct=False, reason=f"expected {expected!r} not found in answer or result")
 
 

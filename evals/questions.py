@@ -5,8 +5,9 @@ Usage:
     uv run python -m evals.questions --update        # rerun every reference SQL and rewrite it
     uv run python -m evals.questions --set natural   # the same for the natural set
 
-There are two sets. "core" has 50 precisely worded questions, 10 per category. "natural" has
-questions worded the way a user would ask them, with no column or category names in them.
+There are three sets. "core" has 50 precisely worded questions, 10 per category. "natural"
+has questions worded the way a user would ask them, with no column or category names in
+them. "heldout" was written after the last prompt change and is not used to tune anything.
 
 The expected answers are never typed by hand: they are whatever the reference SQL returns.
 The check fails if the stored answer and the database disagree, which is what happens when
@@ -33,6 +34,7 @@ QUESTIONS_PATH = Path(__file__).parent / "questions.yaml"
 QUESTION_SETS = {
     "core": QUESTIONS_PATH,
     "natural": Path(__file__).parent / "questions_natural.yaml",
+    "heldout": Path(__file__).parent / "questions_heldout.yaml",
 }
 
 Category = Literal["lookup", "aggregation", "comparison", "evolution", "refusal"]
@@ -63,7 +65,20 @@ NATURAL_HEADER = """\
 # Same fields and answer types as questions.yaml.
 # `expected` is written by `uv run python -m evals.questions --set natural --update`.
 """
-HEADERS = {"core": HEADER, "natural": NATURAL_HEADER}
+HELDOUT_HEADER = """\
+# Held-out set: questions written after prompt v5 was final, and committed before the agent
+# ever saw them. The core and natural sets were used to find the failures that v2 to v5
+# fixed, so a score on them is partly a score on the training data. This one is not.
+#
+# Rules: do not change the prompt because of a failure here and then quote the new score
+# on this set. A fix is measured on the core set; this set is run once per prompt version.
+#
+# What is different from the core set: products named the way a shopper names them ("the
+# 1 kg Nutella") instead of by barcode, a chain written without its accent, a relative date
+# ("last month") and new refusals. Same fields and answer types as questions.yaml.
+# `expected` is written by `uv run python -m evals.questions --set heldout --update`.
+"""
+HEADERS = {"core": HEADER, "natural": NATURAL_HEADER, "heldout": HELDOUT_HEADER}
 
 
 class Question(BaseModel):

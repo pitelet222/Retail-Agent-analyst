@@ -10,7 +10,7 @@ Core set of 50 questions, Haiku 5.5 unless said otherwise.
 
 | | Prompt v1 | Prompt v3 | Prompt v4 | Sonnet 5.5, v3 |
 |---|---|---|---|---|
-| Accuracy | 98 % (49) | 100 % (50), three runs | 100 % (50), three runs | 98 % (49) |
+| Accuracy | 98 % (49) | 100 % (50) twice, 98 % (49) once | 100 % (50), three runs | 98 % (49) |
 | Correct refusals | 10 of 10 | 10 of 10 | 10 of 10 | 9 of 10 |
 | Answers in the wrong language | 13 | 0 | 0 | 0 |
 | SQL valid at first try | 86.7 % | 95.6, 97.8 and 95.6 % | 100 %, three runs | 100 % |
@@ -29,14 +29,18 @@ agent with its loop written in LangGraph instead of PydanticAI scored the same, 
 cost and speed (comparison 5).
 
 On the natural set (22 questions worded like a user's), v3 gets 20 of the 20 graded
-automatically and v4 gets 19 of 20 in each of two runs, with 4 of 4 refusals and no answer
-in the wrong language. The two misses of v4 are correct answers that the grader does not
+automatically and v4 gets 19 and 20 of 20 in two runs, with 4 of 4 refusals and no answer
+in the wrong language. The miss of v4 is a correct answer that the grader does not
 recognise (see failure type 6); the other two questions are read by hand.
 
-Read the accuracy with its limits: 50 questions make each one worth 2 points, and the same
-agent on the same questions has given 90 % and 98 %. What the versions show beyond noise is
-the language (13 to 0), the failed queries (6 to between 0 and 2) and, for v4, a quarter
-fewer model calls.
+All the figures above use today's grader. Re-grading the saved runs with it changed two
+verdicts, one each way (failure type 9).
+
+Read the accuracy with its limits: 50 questions make each one worth 2 points. A 95 %
+interval around 50 of 50 runs from 93 % to 100 %, around 49 of 50 from 90 % to 100 %, so
+those two results cannot be told apart from one run each. What the versions show beyond
+noise is the language (13 to 0), the failed queries (6 to between 0 and 2) and, for v4, a
+quarter fewer model calls. Repeat runs say more than one run (see "How sure").
 
 ## Failure types
 
@@ -174,6 +178,32 @@ process on the machine used, not the answer. The client is now loaded before the
 question (`warm_up`), and the evaluation reports that time apart. After that the slowest
 question of a run took 12.1, 11.2 and 9.7 s.
 
+### 9. Old runs graded by an old grader
+
+Each fix to the grader (failure type 6) applied to the runs that came after it. The runs
+saved before it kept their verdicts. `uv run python -m evals.stats` now grades every saved
+run again with today's rules, from the answer text and the first rows of the result, both
+saved. Two verdicts changed:
+
+- T05, prompt v3, run of 13 November at 20:31, from right to wrong: "The first year with
+  more than 10,000 price records is 2026 [...] 2025 is still below the threshold." The answer
+  is 2024, and 2025 had 44,736. It passed because the grader of the time accepted any figure
+  within 1 % of 2024, and 2026 is. Years were made exact a few hours later, but
+  this run was never graded again.
+- N17, prompt v4, natural set, from wrong to right: the date was written in words ("8 July
+  2010"), which the grader now reads.
+
+The same review closed a hole that no saved answer had gone through: a number or a date in
+the first row of the result was enough, whatever the text said. The text is what the user
+reads, so it must now give the answer. Dates count when written in words in English,
+Spanish or French ("6 February 2021", "12 de noviembre de 2026"); every answer to T06 is
+written that way. Checked on the 22 saved runs that keep their result rows: no pass rested
+on the table alone except those dates.
+
+Still open: a rows question passes when its table is right, even if the text misstates a
+figure from it. Only the first five rows of each result are saved, so those cannot be
+re-graded automatically.
+
 ### Types expected and not found
 
 The plan expected wrong units, wrong joins and invented figures. None appeared in the
@@ -233,7 +263,7 @@ into the instructions as plain text and removes the tool.
 | | v3 | v4 | v4 | v4 |
 |---|---|---|---|---|
 | Started at | 20:31 | 20:22 | 20:44 | 20:58 |
-| Accuracy | 100 % | 100 % | 100 % | 100 % |
+| Accuracy | 98 % (failure type 9) | 100 % | 100 % | 100 % |
 | Model calls | 165 | 122 | 118 | 113 |
 | Queries run | 62 | 55 | 54 | 58 |
 | Input tokens | 498,517 | 348,541 | 338,607 | 322,946 |
@@ -324,6 +354,33 @@ Four runs alternated, minutes apart (two more of PydanticAI from minutes before 
 - **The demo keeps PydanticAI.** The graph brings nothing measurable, and matching its
   behaviour depends on PydanticAI's private functions.
 
+## How sure: intervals and repeat runs
+
+From `uv run python -m evals.stats`, which re-grades every saved run with today's grader and
+needs neither the model nor the database.
+
+A single run of 50 questions is a coarse measure. The 95 % Wilson interval is 93 to 100 %
+for 50 right, 90 to 100 % for 49, and 81 to 97 % for the 46 of prompt v2. So one run can
+separate v2 from v4, but not 49 from 50.
+
+Repeat runs say more. pass^k counts the questions answered right in every one of k runs of
+the same configuration; a question that is right in three runs of four lowers it, while the
+average accuracy would hide it.
+
+| Configuration (Haiku 5.5) | Runs | Right in every run | Not always right |
+|---|---|---|---|
+| Core set, v1 | 2 | 48 of 50 | C09, T04 |
+| Core set, v3 | 3 | 49 of 50 | T05 |
+| Core set, v4 | 3 | 50 of 50 | none |
+| Core set, v5, PydanticAI | 5 | 50 of 50 | none |
+| Core set, v5, LangGraph | 2 | 50 of 50 | none |
+| Natural set, v1 | 2 | 19 of 20 | N14 |
+| Natural set, v4 | 2 | 19 of 20 | N14 |
+
+The oldest v1 run is left out: it was saved before the result rows were, so it cannot be
+re-graded. Five runs of v5 with no question ever missed is the strongest result here, and it
+is still a result on questions the prompt was tuned on.
+
 ## Against the targets
 
 | Target | Result (Haiku 5.5, prompt v4) |
@@ -333,6 +390,11 @@ Four runs alternated, minutes apart (two more of PydanticAI from minutes before 
 | Answer in under 15 s | Median 3.9 to 4.3 s, p90 5.4 to 5.6 s, slowest question 11.2 and 9.7 s, once the model client is loaded |
 
 ## What this evaluation does not tell
+
+- **Accuracy on questions nobody tuned for.** Every failure fixed between v1 and v5 was found
+  on the core and natural sets, so their scores are partly scores on the training data. The
+  held-out set (`evals/questions_heldout.yaml`, 26 questions) was written after v5 and is
+  there to measure that gap.
 
 - **Accuracy in real use.** The core questions say average or median and name the category.
   The natural set is closer to a user, but small, and its questions were kept only if they

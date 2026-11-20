@@ -201,7 +201,7 @@ Core set of 50 questions, Haiku 5.5 unless said otherwise, 2026-11-13, one quest
 
 | | Prompt v1 | Prompt v3 | Prompt v4 | Sonnet 5.5, v3 |
 |---|---|---|---|---|
-| Accuracy | 98 % (49) | 100 % (50), three runs | 100 % (50), three runs | 98 % (49) |
+| Accuracy | 98 % (49) | 100 % (50) twice, 98 % (49) once | 100 % (50), three runs | 98 % (49) |
 | Correct refusals | 10 of 10 | 10 of 10 | 10 of 10 | 9 of 10 |
 | Answers in the wrong language | 13 | 0 | 0 | 0 |
 | SQL valid at first try | 86.7 % | 95.6 to 97.8 % | 100 % | 100 % |
@@ -217,9 +217,14 @@ v5, the current version, is v4 plus one line with today's date. One run on 2026-
 100 % (50), 10 of 10 refusals, 0.043 EUR, median 3.9 s, p90 6.1 s.
 
 On the natural set (`evals/questions_natural.yaml`, 22 questions worded like a user's, run
-with `--set natural`) v4 gets 19 of the 20 graded automatically in each of two runs, and 4
-of 4 refusals. Both misses are right answers the grader does not recognise (one gives the
-date in words); they and the two open comparisons were read by hand and are correct.
+with `--set natural`) v4 gets 19 and 20 of the 20 graded automatically in two runs, and 4
+of 4 refusals. The miss is a right answer the grader does not recognise; it and the two
+open comparisons were read by hand and are correct.
+
+How sure these numbers are: with 50 questions, a 95 % interval around 50 right runs from
+93 % to 100 %. Five runs of v5 answered all 50 right every time. Every saved run has been
+graded again with today's grader (`uv run python -m evals.stats`), which changed two old
+verdicts, one each way; the table above uses today's grader.
 
 What to keep in mind when reading these numbers:
 
@@ -239,10 +244,11 @@ What to keep in mind when reading these numbers:
   two runs took 11.2 s and 9.7 s.
 - **The evaluation had bugs too**, found by reading the failures and by a review: seven
   questions wrongly marked as failed, a 90th percentile that was really the 92nd, a 1 %
-  tolerance that accepted the wrong year. They are listed in the report.
-- **How the grader decides.** A number is right if it is within 1 % (exact for a year) and
-  appears in the answer text or in the first row of the agent's result; a table is right if
-  every expected row is in the result. The rules are in `evals/grading.py`. Cost uses the
+  tolerance that accepted the wrong year, and runs saved before those fixes that were
+  never graded again. They are listed in the report.
+- **How the grader decides.** A number or a date is right if the answer text gives it,
+  within 1 % for a number (exact for a year); the right figure in the table alone is not
+  enough. A table is right if every expected row is in the result. The rules are in `evals/grading.py`. Cost uses the
   list prices per million tokens (Haiku 5.5: 0.10 / 0.50 USD; Sonnet 5.5: 2 / 10 USD) and
   the ECB rate of 2026-11-12 (1 EUR = 1.1081 USD).
 
@@ -426,6 +432,8 @@ uv run python -m pytest                        # the database tests are skipped 
 uv run python -m evals.questions               # the 50 expected answers still match the data
 uv run python -m evals.run                     # measure the agent: about 5 minutes, 0.04 EUR
 uv run python -m evals.run --set natural       # the 22 questions worded like a user's
+uv run python -m evals.run --set heldout       # 26 questions written after the last prompt
+uv run python -m evals.stats                   # re-grade saved runs, intervals and pass^k
 uv run python -m evals.run --only L01 T03      # a few questions, nothing is saved
 uv run python -m evals.run --prompt v3         # an older version, to compare
 uv run python -m evals.run --engine langgraph  # the same agent, its loop in LangGraph

@@ -1,0 +1,302 @@
+# Held-out set: questions written after prompt v5 was final, and committed before the agent
+# ever saw them. The core and natural sets were used to find the failures that v2 to v5
+# fixed, so a score on them is partly a score on the training data. This one is not.
+#
+# Rules: do not change the prompt because of a failure here and then quote the new score
+# on this set. A fix is measured on the core set; this set is run once per prompt version.
+#
+# What is different from the core set: products named the way a shopper names them ("the
+# 1 kg Nutella") instead of by barcode, a chain written without its accent, a relative date
+# ("last month") and new refusals. Same fields and answer types as questions.yaml.
+# `expected` is written by `uv run python -m evals.questions --set heldout --update`.
+
+questions:
+
+# ---------------------------------------------------------------- lookup
+- id: H01
+  category: lookup
+  question: What is the lowest price anyone has recorded for a 1 kg jar of Nutella?
+  answer_type: number
+  reference_sql: |
+    SELECT min(pr.price)
+    FROM prices pr JOIN products p ON p.code = pr.product_code
+    WHERE p.name ILIKE '%nutella%' AND p.name NOT ILIKE '%biscuit%'
+      AND p.quantity = 1000 AND p.unit = 'g'
+    LIMIT 1
+  expected: 4.66
+- id: H02
+  category: lookup
+  language: es
+  question: ¿En cuántas cadenas distintas se ha visto a la venta el Nutella de 400 g?
+  answer_type: number
+  reference_sql: |
+    SELECT count(DISTINCT l.chain)
+    FROM prices pr
+    JOIN products p ON p.code = pr.product_code
+    JOIN locations l ON l.id = pr.location_id
+    WHERE p.name ILIKE '%nutella%' AND p.name NOT ILIKE '%biscuit%'
+      AND p.quantity = 400 AND p.unit = 'g'
+    LIMIT 1
+  expected: 17
+- id: H03
+  category: lookup
+  question: How many Intermarche shops are there in Grenoble?
+  answer_type: number
+  reference_sql: |
+    SELECT count(*) FROM locations WHERE chain = 'Intermarché' AND city = 'Grenoble' LIMIT 1
+  expected: 3
+- id: H04
+  category: lookup
+  question: When was the 1 kg jar of Nutella last seen on a shelf?
+  answer_type: text
+  reference_sql: |
+    SELECT max(pr.date)
+    FROM prices pr JOIN products p ON p.code = pr.product_code
+    WHERE p.name ILIKE '%nutella%' AND p.name NOT ILIKE '%biscuit%'
+      AND p.quantity = 1000 AND p.unit = 'g'
+    LIMIT 1
+  expected: '2026-11-04'
+- id: H05
+  category: lookup
+  question: How many times has a price been recorded for the 360 g Bonne Maman hazelnut and cocoa
+    spread?
+  answer_type: number
+  reference_sql: |
+    SELECT count(*)
+    FROM prices pr JOIN products p ON p.code = pr.product_code
+    WHERE p.brand ILIKE '%bonne maman%' AND p.name ILIKE '%noisette%'
+      AND p.quantity = 360 AND p.unit = 'g'
+    LIMIT 1
+  expected: 99
+
+# ---------------------------------------------------------------- aggregation
+- id: H06
+  category: aggregation
+  question: Which three cities have the most Lidl stores, and how many each?
+  answer_type: rows
+  ordered: true
+  reference_sql: |
+    SELECT city, count(*) FROM locations WHERE chain = 'Lidl'
+    GROUP BY city ORDER BY count(*) DESC LIMIT 3
+  expected:
+  - [Paris, 9]
+  - [Lyon, 5]
+  - [Marseille, 3]
+- id: H07
+  category: aggregation
+  language: es
+  question: ¿Cuál es el precio medio del Nutella de 400 g, contando todas sus observaciones?
+  answer_type: number
+  reference_sql: |
+    SELECT round(avg(pr.price), 2)
+    FROM prices pr JOIN products p ON p.code = pr.product_code
+    WHERE p.name ILIKE '%nutella%' AND p.name NOT ILIKE '%biscuit%'
+      AND p.quantity = 400 AND p.unit = 'g'
+    LIMIT 1
+  expected: 3.67
+- id: H08
+  category: aggregation
+  question: What percentage of the prices recorded in Paris shops are promotions?
+  answer_type: number
+  reference_sql: |
+    SELECT round(100.0 * avg(pr.is_discounted::int), 2)
+    FROM prices pr JOIN locations l ON l.id = pr.location_id
+    WHERE l.city = 'Paris'
+    LIMIT 1
+  expected: 3.21
+- id: H09
+  category: aggregation
+  question: How many different stores have at least one price from November 2026?
+  answer_type: number
+  reference_sql: |
+    SELECT count(DISTINCT location_id) FROM prices
+    WHERE date >= '2026-11-01' AND date < '2026-12-01'
+    LIMIT 1
+  expected: 65
+- id: H10
+  category: aggregation
+  question: How many prices were recorded last month?
+  answer_type: number
+  reason: Relative to the day the set is run. The expected answer is for October 2026, so this
+    set has to be run in November 2026 or the question reworded.
+  reference_sql: |
+    SELECT count(*) FROM prices
+    WHERE date >= date_trunc('month', current_date) - interval '1 month'
+      AND date < date_trunc('month', current_date)
+    LIMIT 1
+  expected: 4721
+
+# ---------------------------------------------------------------- comparison
+- id: H11
+  category: comparison
+  question: Is a 400 g jar of Nutella cheaper on average at Carrefour or at E.Leclerc?
+  answer_type: rows
+  reference_sql: |
+    SELECT l.chain, round(avg(pr.price), 2)
+    FROM prices pr
+    JOIN products p ON p.code = pr.product_code
+    JOIN locations l ON l.id = pr.location_id
+    WHERE p.name ILIKE '%nutella%' AND p.name NOT ILIKE '%biscuit%'
+      AND p.quantity = 400 AND p.unit = 'g'
+      AND l.chain IN ('Carrefour', 'E.Leclerc')
+    GROUP BY l.chain ORDER BY 2
+    LIMIT 2
+  expected:
+  - [E.Leclerc, 3.15]
+  - [Carrefour, 3.65]
+- id: H12
+  category: comparison
+  question: Which supermarket chain has the most shops in Lyon?
+  answer_type: rows
+  reference_sql: |
+    SELECT chain, count(*) FROM locations WHERE city = 'Lyon' AND chain IS NOT NULL
+    GROUP BY chain ORDER BY count(*) DESC LIMIT 1
+  expected:
+  - [Carrefour, 13]
+- id: H13
+  category: comparison
+  question: Among chains with at least 5 prices for the 1 kg Nutella, which one has the lowest
+    average price for it?
+  answer_type: rows
+  reference_sql: |
+    SELECT l.chain, round(avg(pr.price), 2)
+    FROM prices pr
+    JOIN products p ON p.code = pr.product_code
+    JOIN locations l ON l.id = pr.location_id
+    WHERE p.name ILIKE '%nutella%' AND p.name NOT ILIKE '%biscuit%'
+      AND p.quantity = 1000 AND p.unit = 'g' AND l.chain IS NOT NULL
+    GROUP BY l.chain HAVING count(*) >= 5
+    ORDER BY 2 LIMIT 1
+  expected:
+  - [Intermarché, 6.25]
+- id: H14
+  category: comparison
+  question: How many more prices are there for E.Leclerc than for Carrefour?
+  answer_type: number
+  reference_sql: |
+    SELECT count(*) FILTER (WHERE l.chain = 'E.Leclerc') - count(*) FILTER (WHERE l.chain = 'Carrefour')
+    FROM prices pr JOIN locations l ON l.id = pr.location_id
+    LIMIT 1
+  expected: 22037
+- id: H15
+  category: comparison
+  language: es
+  question: ¿Quién tiene más tiendas en la base, Monoprix o Franprix? ¿Cuántas cada una?
+  answer_type: rows
+  reference_sql: |
+    SELECT chain, count(*) FROM locations WHERE chain IN ('Monoprix', 'Franprix')
+    GROUP BY chain ORDER BY count(*) DESC LIMIT 2
+  expected:
+  - [Monoprix, 103]
+  - [Franprix, 78]
+- id: H16
+  category: comparison
+  question: Is the median price of a price record higher at Biocoop or at Naturalia?
+  answer_type: rows
+  reference_sql: |
+    SELECT l.chain, round(percentile_cont(0.5) WITHIN GROUP (ORDER BY pr.price)::numeric, 2)
+    FROM prices pr JOIN locations l ON l.id = pr.location_id
+    WHERE l.chain IN ('Biocoop', 'Naturalia')
+    GROUP BY l.chain ORDER BY 2 DESC
+    LIMIT 2
+  expected:
+  - [Naturalia, 4.19]
+  - [Biocoop, 3.75]
+
+# ---------------------------------------------------------------- evolution
+- id: H17
+  category: evolution
+  question: How many prices were recorded in each month of summer 2026, June to August?
+  answer_type: rows
+  ordered: true
+  reason: Only the counts are kept, so that a month written as a date, a name or a number all
+    match.
+  reference_sql: |
+    SELECT count(*) FROM prices
+    WHERE date >= '2026-06-01' AND date < '2026-09-01'
+    GROUP BY date_trunc('month', date) ORDER BY date_trunc('month', date)
+    LIMIT 3
+  expected:
+  - [3099]
+  - [4526]
+  - [9604]
+- id: H18
+  category: evolution
+  question: By how many euros did the average price of the 1 kg Nutella change from 2025 to 2026?
+  answer_type: number
+  reference_sql: |
+    SELECT round(
+      avg(pr.price) FILTER (WHERE pr.date >= '2026-01-01' AND pr.date < '2027-01-01')
+      - avg(pr.price) FILTER (WHERE pr.date >= '2025-01-01' AND pr.date < '2026-01-01'), 2)
+    FROM prices pr JOIN products p ON p.code = pr.product_code
+    WHERE p.name ILIKE '%nutella%' AND p.name NOT ILIKE '%biscuit%'
+      AND p.quantity = 1000 AND p.unit = 'g'
+    LIMIT 1
+  expected: -0.16
+- id: H19
+  category: evolution
+  language: es
+  question: ¿En qué año se registró el primer precio de Lidl?
+  answer_type: number
+  reference_sql: |
+    SELECT extract(year FROM min(pr.date))::int
+    FROM prices pr JOIN locations l ON l.id = pr.location_id
+    WHERE l.chain = 'Lidl'
+    LIMIT 1
+  expected: 2023
+- id: H20
+  category: evolution
+  question: How many prices were recorded in the first week of February 2026, from the 1st to
+    the 7th?
+  answer_type: number
+  reference_sql: |
+    SELECT count(*) FROM prices WHERE date >= '2026-02-01' AND date <= '2026-02-07' LIMIT 1
+  expected: 9180
+- id: H21
+  category: evolution
+  question: Did the number of prices recorded at Aldi go up or down from 2025 to 2026, and by
+    how many?
+  answer_type: number
+  reference_sql: |
+    SELECT count(*) FILTER (WHERE pr.date >= '2026-01-01' AND pr.date < '2027-01-01')
+         - count(*) FILTER (WHERE pr.date >= '2025-01-01' AND pr.date < '2026-01-01')
+    FROM prices pr JOIN locations l ON l.id = pr.location_id
+    WHERE l.chain = 'Aldi'
+    LIMIT 1
+  expected: -97
+
+# ---------------------------------------------------------------- refusal
+- id: H22
+  category: refusal
+  question: How many calories are in a jar of Nutella?
+  answer_type: refusal
+  reason: There is no nutrition information, only names, brands, categories and sizes.
+- id: H23
+  category: refusal
+  question: How much do bananas cost at Tesco?
+  answer_type: refusal
+  reason: There are no Tesco stores; all stores are in France.
+  reference_sql: |
+    SELECT count(*) FROM locations
+    WHERE chain ILIKE '%tesco%' OR store_brand ILIKE '%tesco%' OR name ILIKE '%tesco%'
+    LIMIT 1
+  expected: 0
+- id: H24
+  category: refusal
+  language: es
+  question: ¿Cuánto cobra de media un cajero de Lidl?
+  answer_type: refusal
+  reason: There is no wage or employee data.
+- id: H25
+  category: refusal
+  question: Which Carrefour store had the longest queues last Saturday?
+  answer_type: refusal
+  reason: There is no data on queues or footfall.
+- id: H26
+  category: refusal
+  question: What did a jar of Nutella cost in 1999?
+  answer_type: refusal
+  reason: The earliest price is from 2010.
+  reference_sql: |
+    SELECT count(*) FROM prices WHERE date < '2000-01-01' LIMIT 1
+  expected: 0

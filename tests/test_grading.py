@@ -7,7 +7,13 @@ import pytest
 
 from agent.agent import AgentAnswer, AgentRun
 from agent.models import SqlResult
-from evals.grading import cell_matches, grade, numbers_in_text, rows_stated_in_text
+from evals.grading import (
+    cell_matches,
+    dates_in_text,
+    grade,
+    numbers_in_text,
+    rows_stated_in_text,
+)
 from evals.questions import Question
 
 
@@ -124,8 +130,18 @@ def test_cells_match_across_types_the_database_returns():
 # --- number and text -----------------------------------------------------------------
 
 
-def test_a_number_is_right_when_the_query_returns_it():
-    assert grade(question(), run("Many.", rows=[[30805]])).correct
+def test_a_number_in_the_result_but_not_in_the_text_is_wrong():
+    # The user reads the text: the right figure in the table does not save a wrong sentence.
+    assert not grade(question(), run("Many.", rows=[[30805]])).correct
+    assert grade(question(), run("There are 30,805.", rows=[[30805]])).correct
+
+
+def test_a_year_in_the_first_row_does_not_save_a_text_that_gives_another():
+    # The text of a real answer to T05 (prompt v3), with a result that has 2024 on top.
+    text = "The first year with more than 10,000 price records is 2026, with 95,470 records."
+    result = grade(question(expected=2024), run(text, rows=[[2024, 27641]]))
+    assert not result.correct
+    assert "does not state it" in result.reason
 
 
 def test_a_number_is_right_when_the_answer_states_it_within_one_percent():
@@ -143,19 +159,38 @@ def test_a_negative_change_matches_a_sentence_without_the_sign():
     assert grade(question(expected=-2.89), run("It fell by 2.89 %.", rows=[[1], [2]])).correct
 
 
-def test_a_date_is_right_from_the_result_or_from_the_text():
+def test_a_date_is_right_only_when_the_text_gives_it():
     q = question("text", "2026-11-12")
-    assert grade(q, run("Last week.", rows=[[date(2026, 11, 12)]])).correct
+    assert not grade(q, run("Last week.", rows=[[date(2026, 11, 12)]])).correct
     assert grade(q, run("The latest is 2026-11-12.")).correct
     assert not grade(q, run("The latest is 2026-11-10.", rows=[[date(2026, 11, 10)]])).correct
 
 
-def test_a_date_written_in_words_is_right_when_it_tops_a_sorted_result():
-    # Found in the first measurement: "6 February 2021" over 200 rows sorted by date.
+@pytest.mark.parametrize(
+    "text",
+    [
+        "First seen on 6 February 2021.",
+        "First seen on February 6, 2021.",
+        "Premier relevé le 6 février 2021.",
+        "El primer precio es del 6 de febrero de 2021.",
+        "First seen on 06/02/2021.",
+    ],
+)
+def test_a_date_written_in_words_counts_in_three_languages(text):
+    # Found re-grading the saved runs: every answer to T06 writes the date in words.
     q = question("text", "2021-02-06")
-    rows = [[date(2021, 2, 6), 0.98], [date(2021, 3, 1), 0.99]]
-    assert grade(q, run("First seen on 6 February 2021.", rows=rows)).correct
-    assert not grade(q, run("First seen in spring.", rows=rows[::-1])).correct
+    assert grade(q, run(text, rows=[[date(2021, 2, 6), 0.98]])).correct
+
+
+def test_another_date_in_words_is_wrong():
+    q = question("text", "2021-02-06")
+    assert not grade(q, run("First seen on 7 February 2021.")).correct
+    assert not grade(q, run("First seen in spring.", rows=[[date(2021, 2, 6)]])).correct
+    assert dates_in_text("1er janvier 2025 et 31 décembre 2025") == {
+        date(2025, 1, 1),
+        date(2025, 12, 31),
+    }
+    assert dates_in_text("on 31 February 2025") == set()
 
 
 # --- rows ----------------------------------------------------------------------------

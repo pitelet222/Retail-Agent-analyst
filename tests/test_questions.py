@@ -21,7 +21,9 @@ from evals.questions import (
 
 QUESTIONS = load_questions()
 NATURAL = load_questions(QUESTION_SETS["natural"])
-WITH_SQL = [q for q in QUESTIONS + NATURAL if q.reference_sql]
+HELDOUT = load_questions(QUESTION_SETS["heldout"])
+EVERY_SET = QUESTIONS + NATURAL + HELDOUT
+WITH_SQL = [q for q in EVERY_SET if q.reference_sql]
 
 
 REAL_PRICES = 185_337
@@ -48,13 +50,22 @@ def test_the_natural_set_has_unique_ids_and_no_schema_words_in_its_questions():
         assert "en:" not in q.question and "barcode" not in q.question, q.id
 
 
+def test_the_held_out_set_is_new_and_names_products_like_a_shopper():
+    assert structure_problems(HELDOUT, per_category=None) == []
+    assert structure_problems(EVERY_SET, per_category=None) == []
+    old = {q.question for q in QUESTIONS + NATURAL}
+    for q in HELDOUT:
+        assert q.question not in old, q.id
+        assert "en:" not in q.question and "barcode" not in q.question, q.id
+
+
 @pytest.mark.parametrize("question", WITH_SQL, ids=lambda q: q.id)
 def test_every_reference_sql_obeys_the_rules_the_agent_obeys(question):
     validate_sql(question.reference_sql)
 
 
 def test_every_answerable_question_has_an_expected_answer():
-    everything = QUESTIONS + NATURAL
+    everything = EVERY_SET
     missing = [q.id for q in everything if q.answer_type != "refusal" and q.expected is None]
     assert missing == []
 
@@ -93,3 +104,6 @@ def test_writing_the_file_and_reading_it_back_changes_nothing(tmp_path):
 def test_stored_expected_answers_match_the_database():
     assert database_problems(QUESTIONS) == []
     assert database_problems(NATURAL) == []
+    # "Last month" moves with the calendar: its stored answer is only right in November 2026.
+    fixed = [q for q in HELDOUT if "current_date" not in (q.reference_sql or "")]
+    assert database_problems(fixed) == []

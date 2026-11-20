@@ -11,6 +11,17 @@ All notable changes to this project. The format follows
 - `setup.sh`: one command from a fresh clone to a loaded database (`--sample` for made-up
   rows without the download).
 - A contributing guide, issue and pull request templates, and release-note categories.
+- A held-out set of 26 questions written after the last prompt change: products named the
+  way a shopper names them, a relative date and new refusals.
+- `evals.stats`: re-grades the saved runs and reports 95 % intervals and pass^k.
+
+### Fixed
+
+- The grader accepted a number or a date found in the first row of the result even when the
+  answer text gave another one. The text must now give it; dates written in words count.
+- Runs saved before earlier grader fixes kept their old verdicts. Re-grading them turned one
+  pass of prompt v3 into a failure (a wrong year accepted by the old 1 % tolerance) and one
+  miss of v4 on the natural set into a pass.
 
 ## [0.1.0] - 2026-11-19
 
