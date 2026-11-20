@@ -213,3 +213,45 @@ def test_an_answer_in_another_language_is_counted_but_still_graded_on_its_conten
     assert results[0].correct
     assert (results[0].answer_language, results[0].language_ok) == ("fr", False)
     assert summarise(results).wrong_language == 1
+
+@pytest.mark.parametrize("workers", ["0", "-1", "-12"])
+def test_main_rejects_nonpositive_workers_before_startup(monkeypatch, capsys, workers):
+    import sys
+
+    import evals.run as runner
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("startup must not run for invalid workers")
+
+    monkeypatch.setattr(sys, "argv", ["evals.run", "--workers", workers, "--model", MODEL])
+    monkeypatch.setattr(runner, "describe_schema", forbidden)
+    monkeypatch.setattr(runner, "default_model", forbidden)
+    monkeypatch.setattr(runner, "load_questions", forbidden)
+    monkeypatch.setattr(runner, "ENGINES", {"pydantic-ai": (forbidden, forbidden)})
+    with pytest.raises(SystemExit) as error:
+        runner.main()
+    assert error.value.code == 2
+    stderr = capsys.readouterr().err
+    assert "usage:" in stderr
+    assert "--workers must be at least 1" in stderr
+
+
+@pytest.mark.parametrize("workers", ["1", "4"])
+def test_main_accepts_positive_workers(monkeypatch, workers):
+    import sys
+    from types import SimpleNamespace
+
+    import evals.run as runner
+
+    seen = []
+
+    def stop_before_startup():
+        seen.append(True)
+        raise RuntimeError("valid arguments reached startup")
+
+    monkeypatch.setattr(sys, "argv", ["evals.run", "--workers", workers])
+    monkeypatch.setattr(sys, "stdout", SimpleNamespace(reconfigure=lambda **kwargs: None))
+    monkeypatch.setattr(runner, "default_model", stop_before_startup)
+    with pytest.raises(SystemExit, match="valid arguments reached startup"):
+        runner.main()
+    assert seen == [True]

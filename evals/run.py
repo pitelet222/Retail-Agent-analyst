@@ -349,6 +349,8 @@ def main() -> None:
         help="what runs the agent's loop: PydanticAI (the agent of the demo) or LangGraph",
     )
     args = parser.parse_args()
+    if args.workers < 1:
+        parser.error("--workers must be at least 1")
     ask_fn, warm_up_fn = ENGINES[args.engine]
     sys.stdout.reconfigure(encoding="utf-8")
 
